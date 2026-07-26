@@ -14,10 +14,35 @@ A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.co
  SQLite + LanceDB                                    Hugging Face model
  (workspace data,                                    cache (persistent
   chat history)                                       Docker volume)
+
+
+                              Monitoring (read-only)
+                    all four containers below only scrape metrics —
+                          none of them can modify vLLM/AnythingLLM
+
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│  vLLM server │  │ GPU exporter │  │   cAdvisor   │
+│   /metrics   │  │    :9835     │  │    :8080     │
+└──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+       │                 │                 │
+       └─────────────────┼─────────────────┘
+                          │  scrape (5s)
+                          ▼
+                   ┌──────────────┐
+                   │  Prometheus  │
+                   │  (port 9090) │
+                   └──────┬───────┘
+                          │  query
+                          ▼
+                   ┌──────────────┐
+                   │   Grafana    │
+                   │  (port 3000) │
+                   └──────────────┘
 ```
 
 - **`vllm`** — builds a custom image on top of `vllm/vllm-openai:v0.8.5`, downloads the configured Hugging Face model on first boot, and serves it via vLLM's OpenAI-compatible API. Tool/function calling is enabled using vLLM's `granite` parser, so it can act as the backend for AnythingLLM's Agent features (web scraping, RAG memory, etc.), not just plain chat.
 - **`anythingllm`** — the web UI, connected to `vllm` as a `generic-openai` provider. Handles chat, workspaces, embeddings (local, CPU-only) and a LanceDB vector store — no external services required.
+- **`prometheus` / `nvidia-gpu-exporter` / `cadvisor` / `grafana`** — read-only monitoring stack; see [Monitoring](#monitoring) below.
 
 ## Prerequisites
 
