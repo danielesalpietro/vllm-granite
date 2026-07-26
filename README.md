@@ -1,6 +1,6 @@
 # vLLM + IBM Granite (MoE with CPU Offload)
 
-A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.com/vllm-project/vllm) serving an [IBM Granite](https://huggingface.co/ibm-granite) instruct model, paired with [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) as a chat/RAG/agent frontend. Runs entirely locally via Docker Compose, targeting a single-GPU workstation (24 GB VRAM) with a large amount of host RAM available for CPU offload.
+A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.com/vllm-project/vllm) serving an [IBM Granite](https://huggingface.co/ibm-granite) instruct model, paired with [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) as a chat/RAG/agent frontend. Runs entirely locally via Docker Compose, targeting a single-GPU workstation (24 GB VRAM) with a large amount of host RAM available for CPU offload (native Linux hosts only — see the [CPU offload](#cpu-offload) note below if you're on Docker Desktop/WSL2).
 
 ## Architecture
 
@@ -57,12 +57,24 @@ Environment variables consumed by the `vllm` service (set in `.env`, loaded via 
 | `TENSOR_PARALLEL_SIZE`    | `1`                                   | Increase for multi-GPU tensor parallelism                  |
 | `DTYPE`                   | `bfloat16`                           | Model weights/activations dtype                            |
 | `HF_TOKEN`                | *(empty)*                            | Hugging Face access token, required for gated models       |
-| `CPU_OFFLOAD_GB`          | *(empty)*                            | Reserved for CPU weight offloading — **not yet wired into `start.sh`**; set it and add `--cpu-offload-gb` to the `vllm serve` command in `start.sh` if you need to offload part of the model to host RAM |
+| `CPU_OFFLOAD_GB`          | `0`                                   | GB of model weights to offload to host RAM (passed as `--cpu-offload-gb`). **Only works on native Linux Docker hosts — see [CPU offload](#cpu-offload) below.** Leave at `0` on Docker Desktop/WSL2. |
 
 AnythingLLM's settings (provider, storage, auth) are currently hardcoded in `docker-compose.yml` under `services.anythingllm.environment` rather than sourced from `.env`. Notably:
 
 - `AUTH_TOKEN` — the UI login password (default `changeme`, **change before any real use**)
 - `JWT_SECRET` — required for AnythingLLM to issue session tokens; must be a long random string
+
+## CPU offload
+
+`start.sh` passes `CPU_OFFLOAD_GB` to `vllm serve` as `--cpu-offload-gb`, which lets vLLM run models larger than available VRAM by keeping part of the weights in host RAM (treat it as "virtual VRAM" ≈ real VRAM + `CPU_OFFLOAD_GB`).
+
+**This only works on a native Linux Docker host.** vLLM's V1 engine requires UVA (pinned/page-locked host memory) for CPU offloading, and **Docker Desktop on WSL2 does not support it** — any `CPU_OFFLOAD_GB` value greater than `0` crashes the container on startup with:
+
+```
+AssertionError: V1 CPU offloading requires uva (pin memory) support
+```
+
+This is the same underlying limitation behind the `Using 'pin_memory=False' as WSL is detected` warning that always appears in the logs. Keep `CPU_OFFLOAD_GB=0` (the default) if you're running under WSL2 — this repo's 8B Granite default fits entirely in a 24 GB GPU anyway. If you move this stack to a bare-metal/native Linux Docker host, you can raise `CPU_OFFLOAD_GB` to run the larger MoE models listed in `.env`'s comments (e.g. `granite-3.3-20b-instruct`, `Mixtral-8x7B`, `Qwen2-57B-A14B`).
 
 ## Persistence
 
@@ -98,3 +110,4 @@ curl http://localhost:8000/v1/chat/completions \
 - **`SafetensorError: InvalidHeaderDeserialization`** — a corrupted/partial model shard, usually from an interrupted download. Stop the container and clear the cached model directory from the correct volume (check the real volume name with `docker inspect vllm-granite --format '{{range .Mounts}}{{.Name}} -> {{.Destination}}{{"\n"}}{{end}}'` — it's derived from the Compose *project* name, not the container name), then restart to trigger a clean re-download.
 - **AnythingLLM Agent replies with `400 status code (no body)`** — vLLM wasn't started with tool-calling support; make sure `--enable-auto-tool-choice --tool-call-parser granite` are present in `start.sh`.
 - **AnythingLLM login fails with `Cannot create JWT as JWT_SECRET is unset`** — set `JWT_SECRET` in `docker-compose.yml` under the `anythingllm` service.
+- **`AssertionError: V1 CPU offloading requires uva (pin memory) support`** — you're on Docker Desktop/WSL2 with `CPU_OFFLOAD_GB` set above `0`; see [CPU offload](#cpu-offload).

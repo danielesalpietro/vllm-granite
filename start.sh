@@ -43,6 +43,7 @@ exec vllm serve "$MODEL_ID" \
   --dtype "$DTYPE" \
   --trust-remote-code \
   --enable-prefix-caching \
+  --cpu-offload-gb "$CPU_OFFLOAD_GB" \
   --enable-auto-tool-choice \
   --tool-call-parser granite \
   --served-model-name granite
