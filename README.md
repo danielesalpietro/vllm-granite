@@ -64,6 +64,15 @@ AnythingLLM's settings (provider, storage, auth) are currently hardcoded in `doc
 - `AUTH_TOKEN` — the UI login password (default `changeme`, **change before any real use**)
 - `JWT_SECRET` — required for AnythingLLM to issue session tokens; must be a long random string
 
+### Workspace settings (language consistency)
+
+At this model size (8B), Granite is inconsistent about replying in the user's language — it will sometimes claim (incorrectly) that it can only respond in English, or silently switch to English mid-conversation, especially at higher sampling temperatures. This isn't a config bug: querying vLLM directly confirms the model *can* produce fluent Italian, it just doesn't reliably choose to.
+
+Two workspace-level settings (stored in AnythingLLM's own SQLite DB — `anythingllm_storage` volume, *not* a repo file, so they don't survive a fresh volume and aren't captured by `git`) mitigate this:
+
+- **System prompt** (Workspace Settings → Chat Settings → Prompt) — prepend an explicit instruction, e.g. *"Always respond in the same language the user writes in, matching it exactly, unless the user explicitly asks you to switch or translate. Never claim you are only able to respond in English."*
+- **Temperature** (Workspace Settings → Chat Settings → LLM Temperature) — lower than the provider default (~0.7+) improves instruction-following consistency at the cost of response variety. `0.4` gave consistent correct-language replies across repeated tests in this setup; `0.1` was even more consistent if strict adherence matters more than variety.
+
 ## CPU offload
 
 `start.sh` passes `CPU_OFFLOAD_GB` to `vllm serve` as `--cpu-offload-gb`, which lets vLLM run models larger than available VRAM by keeping part of the weights in host RAM (treat it as "virtual VRAM" ≈ real VRAM + `CPU_OFFLOAD_GB`).
