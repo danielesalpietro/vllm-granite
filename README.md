@@ -52,7 +52,7 @@ Environment variables consumed by the `vllm` service (set in `.env`, loaded via 
 | `MODEL_ID`                | `ibm-granite/granite-3.3-8b-instruct` | Hugging Face model repo to serve                          |
 | `HOST`                    | `0.0.0.0`                            | Bind address for the vLLM API server                      |
 | `PORT`                    | `8000`                               | Port for the vLLM API server (also used by AnythingLLM)    |
-| `MAX_MODEL_LEN`           | `8192`                               | Max context length                                         |
+| `MAX_MODEL_LEN`           | `16384`                              | Max context length — see [KV cache capacity](#kv-cache-capacity) for how high this can safely go on your GPU |
 | `GPU_MEMORY_UTILIZATION`  | `0.90`                               | Fraction of VRAM vLLM is allowed to reserve                |
 | `TENSOR_PARALLEL_SIZE`    | `1`                                   | Increase for multi-GPU tensor parallelism                  |
 | `DTYPE`                   | `bfloat16`                           | Model weights/activations dtype                            |
@@ -75,6 +75,22 @@ AssertionError: V1 CPU offloading requires uva (pin memory) support
 ```
 
 This is the same underlying limitation behind the `Using 'pin_memory=False' as WSL is detected` warning that always appears in the logs. Keep `CPU_OFFLOAD_GB=0` (the default) if you're running under WSL2 — this repo's 8B Granite default fits entirely in a 24 GB GPU anyway. If you move this stack to a bare-metal/native Linux Docker host, you can raise `CPU_OFFLOAD_GB` to run the larger MoE models listed in `.env`'s comments (e.g. `granite-3.3-20b-instruct`, `Mixtral-8x7B`, `Qwen2-57B-A14B`).
+
+## KV cache capacity
+
+On this setup (24 GB GPU, `ibm-granite/granite-3.3-8b-instruct`, `GPU_MEMORY_UTILIZATION=0.90`), vLLM reports at startup (`docker logs vllm-granite`):
+
+```
+GPU KV cache size: 29,696 tokens
+Maximum concurrency for 16,384 tokens per request: 1.81x
+```
+
+This **29,696-token KV cache budget is essentially fixed** by leftover VRAM after loading the model weights (~15.25 GiB) — it doesn't meaningfully change with `MAX_MODEL_LEN`, since `MAX_MODEL_LEN` only needs to fit within it. It's the real ceiling to watch:
+
+- `MAX_MODEL_LEN` must stay **below ~29,696** or vLLM refuses to start (not enough KV cache blocks for even one full-length request).
+- Whatever headroom is left above `MAX_MODEL_LEN` determines concurrency — e.g. at `MAX_MODEL_LEN=16384` there's room for ~1.81 concurrent full-length requests; push `MAX_MODEL_LEN` close to 29,696 and you're limited to a single request at a time, with no room for AnythingLLM (or anyone else) to run a second chat concurrently.
+
+If AnythingLLM's Agent still hits a `This model's maximum context length is N tokens` 400 error above this new limit, raise `MAX_MODEL_LEN` in `.env` and `GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT` in `docker-compose.yml` together (they must match), then re-check the actual logged `GPU KV cache size` after restart — don't just assume the new value fits.
 
 ## Persistence
 
@@ -111,3 +127,4 @@ curl http://localhost:8000/v1/chat/completions \
 - **AnythingLLM Agent replies with `400 status code (no body)`** — vLLM wasn't started with tool-calling support; make sure `--enable-auto-tool-choice --tool-call-parser granite` are present in `start.sh`.
 - **AnythingLLM login fails with `Cannot create JWT as JWT_SECRET is unset`** — set `JWT_SECRET` in `docker-compose.yml` under the `anythingllm` service.
 - **`AssertionError: V1 CPU offloading requires uva (pin memory) support`** — you're on Docker Desktop/WSL2 with `CPU_OFFLOAD_GB` set above `0`; see [CPU offload](#cpu-offload).
+- **`This model's maximum context length is N tokens. However, you requested M tokens`** — AnythingLLM's Agent mode (tool definitions + RAG context + chat history) built a prompt longer than `MAX_MODEL_LEN`. Raise `MAX_MODEL_LEN` in `.env` and `GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT` in `docker-compose.yml` together, staying within the [KV cache capacity](#kv-cache-capacity) for your GPU.

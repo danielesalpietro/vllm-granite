@@ -83,7 +83,7 @@ services:
       LLM_PROVIDER: "generic-openai"
       GENERIC_OPEN_AI_BASE_PATH: "http://vllm:${PORT:-8000}/v1"
       GENERIC_OPEN_AI_MODEL_PREF: "granite"
-      GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT: "8192"
+      GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT: "16384"
       GENERIC_OPEN_AI_API_KEY: "not-required"
 
       # ── Embedding (locale, no GPU richiesto) ────────────────────────────────
