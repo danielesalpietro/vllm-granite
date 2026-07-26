@@ -1,0 +1,38 @@
+# --- MIKE FOR DUMMIES SPECIFIC ---
+node_modules
+.next
+dist
+out
+build
+.open-next
+
+# --- SENSITIVE DATA: PROTECT YOUR KEYS ---
+.env
+.env.*
+.env.local
+*.env
+# Exceptions: example/template files (no real secrets)
+!.env.docker
+!.env.docker.example
+# Backup files created by setup.py
+*.bck
+
+# --- SYSTEM & LOGS ---
+*.log
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+Thumbs.db
+.vercel
+coverage
+
+# --- PYTHON ---
+__pycache__/
+*.pyc
+
+# Docker volumes (to keep your repo light)
+docker-volumes/
+
+# Persistent data folders (bind mounts) — keep .gitkeep, ignore contents
+supabase/postgres/data/pgdata/
+supabase/postgres/data/

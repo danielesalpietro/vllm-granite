@@ -1,0 +1,112 @@
+services:
+  vllm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vllm-granite:local
+    container_name: vllm-granite
+    restart: unless-stopped
+
+    # ── GPU ──────────────────────────────────────────────────────────────────
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1          # aumenta per multi-GPU con tensor_parallel
+              capabilities: [gpu]
+
+    # ── Variabili d'ambiente ─────────────────────────────────────────────────
+    env_file: .env
+
+    # ── Porte ────────────────────────────────────────────────────────────────
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+
+    # ── Volumi ───────────────────────────────────────────────────────────────
+    volumes:
+      # Cache HuggingFace persistente → i pesi non vengono ri-scaricati
+      - hf_cache:/root/.cache/huggingface
+
+    # ── IPC host ─────────────────────────────────────────────────────────────
+    # Richiesto da vLLM v0.25+ per UVA (Unified Virtual Addressing):
+    # GPUModelRunnerV2 alloca buffer pinned accessibili da CPU e GPU.
+    # Docker --ipc=private blocca questa funzionalità → UVA not available.
+    ipc: host
+
+    # ── Memoria condivisa ────────────────────────────────────────────────────
+    # Con ipc:host shm_size è ignorato (usa la shm dell'host), ma lo
+    # lasciamo come documentazione per chi usa --ipc=shareable.
+    shm_size: "16gb"
+
+    # ── Limite RAM per Docker ─────────────────────────────────────────────────
+    # CPU offloading usa la RAM dell'host. Con 192 GB disponibili,
+    # lasciamo ampio margine (150 GB). Regola in base al modello scelto.
+    mem_limit: "150g"
+    memswap_limit: "150g"    # disabilita swap (stesso valore = no swap)
+
+    # ── Limiti ulimit per prestazioni ottimali ───────────────────────────────
+    ulimits:
+      memlock: -1              # nessun limite su memoria bloccata (hugepages)
+      stack: 67108864
+
+    # ── Healthcheck ──────────────────────────────────────────────────────────
+    # start_period alto perché i modelli grandi impiegano minuti a caricare
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:${PORT:-8000}/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 300s
+
+  # ── AnythingLLM ────────────────────────────────────────────────────────────
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    container_name: anythingllm
+    restart: unless-stopped
+    depends_on:
+      vllm:
+        condition: service_healthy   # aspetta che vLLM sia pronto
+
+    ports:
+      - "3001:3001"
+
+    volumes:
+      - anythingllm_storage:/app/server/storage
+
+    environment:
+      # ── Storage (OBBLIGATORIO) ──────────────────────────────────────────────
+      STORAGE_DIR: "/app/server/storage"
+
+      # ── Connessione a vLLM ──────────────────────────────────────────────────
+      # "vllm" è il nome del servizio Docker → risolto automaticamente
+      LLM_PROVIDER: "generic-openai"
+      GENERIC_OPEN_AI_BASE_PATH: "http://vllm:${PORT:-8000}/v1"
+      GENERIC_OPEN_AI_MODEL_PREF: "granite"
+      GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT: "8192"
+      GENERIC_OPEN_AI_API_KEY: "not-required"
+
+      # ── Embedding (locale, no GPU richiesto) ────────────────────────────────
+      EMBEDDING_ENGINE: "native"
+
+      # ── Vector DB (LanceDB embedded, nessun servizio esterno) ───────────────
+      VECTOR_DB: "lancedb"
+
+      # ── Credenziali UI (cambia in produzione) ───────────────────────────────
+      AUTH_TOKEN: "changeme"
+
+      # ── JWT (obbligatorio per creare sessioni/login) ────────────────────────
+      JWT_SECRET: "d6d6f1cdf073560d386656e4ee87c14bad8bb8132d76508faa55111d41c003d2"
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3001/api/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  hf_cache:
+    driver: local
+  anythingllm_storage:
+    driver: local
