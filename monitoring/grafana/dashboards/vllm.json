@@ -1,0 +1,134 @@
+{
+  "title": "vLLM Granite",
+  "uid": "vllm-granite",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    { "id": 100, "type": "row", "title": "vLLM engine", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "id": 1, "type": "stat", "title": "Requests running",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [{ "expr": "vllm:num_requests_running{model_name=\"granite\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Requests waiting",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [{ "expr": "vllm:num_requests_waiting{model_name=\"granite\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "id": 3, "type": "gauge", "title": "GPU KV cache usage",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [{ "expr": "vllm:gpu_cache_usage_perc{model_name=\"granite\"} * 100", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1 }, "overrides": [] }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Prefix cache hit rate",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [{ "expr": "100 * rate(vllm:gpu_prefix_cache_hits_total{model_name=\"granite\"}[5m]) / clamp_min(rate(vllm:gpu_prefix_cache_queries_total{model_name=\"granite\"}[5m]), 1e-9)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1 }, "overrides": [] }
+    },
+    {
+      "id": 5, "type": "stat", "title": "Successful requests (total)",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "targets": [{ "expr": "sum(vllm:request_success_total{model_name=\"granite\"})", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "id": 6, "type": "stat", "title": "Preemptions (total)",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [{ "expr": "vllm:num_preemptions_total{model_name=\"granite\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+    },
+
+    { "id": 101, "type": "row", "title": "Throughput", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 } },
+    {
+      "id": 10, "type": "timeseries", "title": "Token throughput",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "rate(vllm:prompt_tokens_total{model_name=\"granite\"}[1m])", "legendFormat": "prompt tokens/s", "refId": "A" },
+        { "expr": "rate(vllm:generation_tokens_total{model_name=\"granite\"}[1m])", "legendFormat": "generation tokens/s", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Requests finished (by reason)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "rate(vllm:request_success_total{model_name=\"granite\"}[5m])", "legendFormat": "{{finished_reason}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+
+    { "id": 102, "type": "row", "title": "Latency", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 } },
+    {
+      "id": 20, "type": "timeseries", "title": "Time to first token (p50 / p95)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum(rate(vllm:time_to_first_token_seconds_bucket{model_name=\"granite\"}[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{model_name=\"granite\"}[5m])) by (le))", "legendFormat": "p95", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 21, "type": "timeseries", "title": "Time per output token (p50 / p95)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum(rate(vllm:time_per_output_token_seconds_bucket{model_name=\"granite\"}[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(vllm:time_per_output_token_seconds_bucket{model_name=\"granite\"}[5m])) by (le))", "legendFormat": "p95", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "End-to-end request latency (p50 / p95)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum(rate(vllm:e2e_request_latency_seconds_bucket{model_name=\"granite\"}[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{model_name=\"granite\"}[5m])) by (le))", "legendFormat": "p95", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+
+    { "id": 103, "type": "row", "title": "GPU hardware", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 } },
+    {
+      "id": 30, "type": "timeseries", "title": "GPU utilization",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "targets": [{ "expr": "nvidia_smi_utilization_gpu_ratio * 100", "legendFormat": "{{uuid}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }
+    },
+    {
+      "id": 31, "type": "timeseries", "title": "GPU memory used / total",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "targets": [
+        { "expr": "nvidia_smi_memory_used_bytes", "legendFormat": "used", "refId": "A" },
+        { "expr": "nvidia_smi_memory_total_bytes", "legendFormat": "total", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 32, "type": "timeseries", "title": "GPU temperature",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "targets": [{ "expr": "nvidia_smi_temperature_gpu", "legendFormat": "{{uuid}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] }
+    },
+
+    { "id": 104, "type": "row", "title": "Host resources (vllm-granite container) — CPU offload signal", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 } },
+    {
+      "id": 40, "type": "timeseries", "title": "Container RAM usage",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "description": "Rises when CPU-offloaded model weights are resident in host RAM (native Linux only — see README).",
+      "targets": [{ "expr": "container_memory_usage_bytes{name=\"vllm-granite\"}", "legendFormat": "RAM used", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 41, "type": "timeseries", "title": "Container CPU usage",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "targets": [{ "expr": "rate(container_cpu_usage_seconds_total{name=\"vllm-granite\"}[1m]) * 100", "legendFormat": "CPU %", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] }
+    }
+  ]
+}

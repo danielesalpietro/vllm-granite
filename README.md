@@ -129,6 +129,27 @@ curl http://localhost:8000/v1/chat/completions \
   }'
 ```
 
+## Monitoring
+
+A read-only Grafana dashboard at [http://localhost:3000](http://localhost:3000) (no login required) visualizes what's happening inside vLLM in real time, backed by four extra containers:
+
+- **`prometheus`** (port 9090) — scrapes metrics every 5s from vLLM, the GPU exporter, and cAdvisor
+- **`nvidia-gpu-exporter`** — real GPU hardware metrics via `nvidia-smi` (utilization %, VRAM used/total, temperature)
+- **`cadvisor`** — per-container resource usage; the `vllm-granite` container's RAM usage is the practical signal for whether [CPU offload](#cpu-offload) is actually keeping weights in host RAM (once it's usable — see that section)
+- **`grafana`** — the dashboard itself, pre-provisioned with a Prometheus datasource and a `vLLM Granite` dashboard (`monitoring/grafana/dashboards/vllm.json`)
+
+None of these containers can modify vLLM or AnythingLLM — they only scrape `/metrics` endpoints. The dashboard covers:
+
+- Requests running/waiting, GPU KV-cache usage %, prefix-cache hit rate, request success/preemption counts
+- Token throughput (prompt + generation tokens/s)
+- Latency: time-to-first-token, time-per-output-token, end-to-end request latency (p50/p95)
+- GPU utilization, VRAM used/total, temperature
+- `vllm-granite` container RAM/CPU usage (the CPU-offload readiness signal)
+
+**Security note**: Grafana is configured with `GF_AUTH_ANONYMOUS_ENABLED=true` (Viewer role, can't edit/delete) so there's no extra password to manage — this is meant for `localhost`/trusted-network use only. Don't expose port 3000 to an untrusted network without adding real authentication.
+
+Start just the monitoring stack on its own with `docker compose up -d prometheus nvidia-gpu-exporter cadvisor grafana` (vLLM/AnythingLLM must already be running for the vLLM panels to show data).
+
 ## Troubleshooting
 
 - **Dockerfile parse errors on custom `RUN` blocks** — avoid multi-line inline heredocs directly in `RUN` instructions; ship scripts as files and `COPY` them in instead (see `start.sh`).
