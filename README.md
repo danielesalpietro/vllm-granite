@@ -4,6 +4,11 @@ A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.co
 
 ## Architecture
 
+![Architecture diagram](docs/infogramma_vllm_granite_monitoring.png)
+
+<details>
+<summary>Text version</summary>
+
 ```
 ┌──────────────┐        OpenAI-compatible API        ┌──────────────┐
 │  AnythingLLM │  ───────────────────────────────▶   │  vLLM server │
@@ -39,6 +44,8 @@ A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.co
                    │  (port 3000) │
                    └──────────────┘
 ```
+
+</details>
 
 - **`vllm`** — builds a custom image on top of `vllm/vllm-openai:v0.8.5`, downloads the configured Hugging Face model on first boot, and serves it via vLLM's OpenAI-compatible API. Tool/function calling is enabled using vLLM's `granite` parser, so it can act as the backend for AnythingLLM's Agent features (web scraping, RAG memory, etc.), not just plain chat.
 - **`anythingllm`** — the web UI, connected to `vllm` as a `generic-openai` provider. Handles chat, workspaces, embeddings (local, CPU-only) and a LanceDB vector store — no external services required.
