@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vLLM + IBM Granite — self-hosted LLM stack</title>
+<meta name="description" content="Self-hosted, OpenAI-compatible LLM stack: vLLM serving IBM Granite, AnythingLLM chat/RAG/agent UI, and a read-only Grafana monitoring dashboard — all via Docker Compose.">
+<style>
+  :root{
+    --bg-0:#070b18;
+    --bg-1:#0c1330;
+    --bg-2:#131c44;
+    --line:#2a3566;
+    --text:#e8ecfb;
+    --text-dim:#9aa4d4;
+    --blue:#4f9cff;
+    --purple:#a855f7;
+    --purple-dim:#7c3aed;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--text);
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #1d2a66 0%, transparent 60%),
+      radial-gradient(1000px 500px at 110% 10%, #3a1d66 0%, transparent 55%),
+      var(--bg-0);
+    line-height:1.55;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  a{color:var(--blue)}
+
+  /* ── Nav ─────────────────────────────────────────────────────────── */
+  header.nav{
+    position:sticky;top:0;z-index:10;
+    background:rgba(7,11,24,.75);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  header.nav .wrap{display:flex;align-items:center;justify-content:space-between;padding:14px 24px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--purple));box-shadow:0 0 12px 2px rgba(124,58,237,.6)}
+  nav.links{display:flex;gap:22px;font-size:14px;white-space:nowrap}
+  nav.links a{color:var(--text-dim);text-decoration:none}
+  nav.links a:hover{color:var(--text)}
+  @media (max-width:640px){
+    header.nav .wrap{flex-direction:column;gap:10px;padding:14px 20px}
+    nav.links{gap:16px;font-size:13px}
+  }
+
+  /* ── Hero ────────────────────────────────────────────────────────── */
+  .hero{padding:88px 0 56px;text-align:center}
+  .eyebrow{
+    display:inline-block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--purple);background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);
+    padding:6px 14px;border-radius:999px;margin-bottom:22px;
+  }
+  h1{font-size:clamp(32px,5vw,52px);line-height:1.1;margin:0 0 18px;font-weight:800;letter-spacing:-.02em}
+  h1 .grad{background:linear-gradient(135deg,var(--blue),var(--purple));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .tagline{max-width:640px;margin:0 auto 34px;color:var(--text-dim);font-size:17px}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:40px}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:10px;
+    font-weight:600;font-size:14px;text-decoration:none;border:1px solid transparent;transition:transform .15s ease,opacity .15s ease;
+  }
+  .btn:hover{transform:translateY(-1px)}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--purple-dim));color:#fff}
+  .btn-ghost{background:rgba(255,255,255,.04);border-color:var(--line);color:var(--text)}
+
+  .badges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .badge{
+    font-size:12px;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);
+    padding:6px 12px;border-radius:999px;
+  }
+
+  /* ── Sections ────────────────────────────────────────────────────── */
+  section{padding:56px 0}
+  h2{font-size:26px;margin:0 0 8px;font-weight:700;letter-spacing:-.01em}
+  .section-sub{color:var(--text-dim);margin:0 0 32px;font-size:15px}
+
+  .arch img{
+    width:100%;border-radius:14px;border:1px solid var(--line);
+    box-shadow:0 30px 80px -30px rgba(79,156,255,.25);
+  }
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media (max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:560px){.grid{grid-template-columns:1fr}}
+
+  .card{
+    background:linear-gradient(180deg,var(--bg-2),var(--bg-1));
+    border:1px solid var(--line);border-radius:14px;padding:22px;
+  }
+  .card .icon{font-size:22px;margin-bottom:12px;display:block}
+  .card h3{margin:0 0 8px;font-size:15.5px}
+  .card p{margin:0;color:var(--text-dim);font-size:13.5px}
+
+  .code-block{
+    background:#080c1c;border:1px solid var(--line);border-radius:12px;padding:20px 22px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px;
+    overflow-x:auto;color:#c9d3ff;
+  }
+  .code-block .cmt{color:#6b7594}
+  .code-block .cmd::before{content:"$ ";color:#5ad1a3}
+
+  .stack-list{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+  .stack-list span{
+    font-size:13px;color:var(--text-dim);background:rgba(255,255,255,.03);
+    border:1px solid var(--line);padding:7px 13px;border-radius:8px;
+  }
+
+  footer{border-top:1px solid var(--line);padding:34px 0;text-align:center;color:var(--text-dim);font-size:13px}
+  footer a{color:var(--text-dim);text-decoration:underline}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>vLLM + Granite</div>
+    <nav class="links">
+      <a href="#architecture">Architecture</a>
+      <a href="#features">Features</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="https://github.com/danielesalpietro/vllm-granite">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <span class="eyebrow">Self-hosted · Docker Compose · Single GPU</span>
+    <h1>Run <span class="grad">IBM Granite</span> on your own GPU<br>with chat, agents, and monitoring built in</h1>
+    <p class="tagline">
+      vLLM serves an OpenAI-compatible API for IBM Granite, AnythingLLM gives it a chat/RAG/agent
+      front end, and a read-only Grafana dashboard shows exactly what's happening underneath —
+      all wired together with one <code>docker compose up</code>.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/danielesalpietro/vllm-granite">View on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/danielesalpietro/vllm-granite/blob/develop/README.md">Read the docs</a>
+    </div>
+    <div class="badges">
+      <span class="badge">vLLM v0.8.5</span>
+      <span class="badge">Granite 3.3 8B Instruct</span>
+      <span class="badge">AnythingLLM</span>
+      <span class="badge">Prometheus + Grafana</span>
+      <span class="badge">24 GB VRAM target</span>
+    </div>
+  </section>
+
+  <section id="architecture" class="arch">
+    <h2>Architecture</h2>
+    <p class="section-sub">Two containers run the platform, four more watch it — none of the monitoring stack can write back to it.</p>
+    <img src="docs/infogramma_vllm_granite_monitoring.png" alt="Architecture diagram: AnythingLLM and vLLM on top, Prometheus/Grafana monitoring stack scraping metrics below">
+  </section>
+
+  <section id="features">
+    <h2>What's inside</h2>
+    <p class="section-sub">Everything needed to talk to the model, build workspaces around it, and watch it work.</p>
+    <div class="grid">
+      <div class="card">
+        <span class="icon">🔌</span>
+        <h3>OpenAI-compatible API</h3>
+        <p>vLLM serves <code>/v1/chat/completions</code> for Granite 3.3 8B — drop it into any OpenAI-SDK-based client.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🛠️</span>
+        <h3>Agent-ready tool calling</h3>
+        <p><code>--enable-auto-tool-choice</code> with vLLM's <code>granite</code> parser, so AnythingLLM's Agent mode (RAG search, document tools, web scraping) works out of the box.</p>
+      </div>
+      <div class="card">
+        <span class="icon">💬</span>
+        <h3>Full chat + RAG UI</h3>
+        <p>AnythingLLM workspaces, local embeddings, and a LanceDB vector store — no external services required.</p>
+      </div>
+      <div class="card">
+        <span class="icon">📊</span>
+        <h3>Read-only monitoring</h3>
+        <p>Prometheus + GPU/container exporters feed a Grafana dashboard: throughput, latency, KV-cache usage, VRAM, RAM — anonymous, view-only access.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🧠</span>
+        <h3>CPU-offload ready</h3>
+        <p><code>--cpu-offload-gb</code> is wired in for running larger MoE models (Mixtral, Qwen2-57B, Granite 20B) on native Linux hosts with plenty of RAM.</p>
+      </div>
+      <div class="card">
+        <span class="icon">🚀</span>
+        <h3>One-command deploy</h3>
+        <p>Everything — model download, tool-calling setup, health checks, dashboards — starts with a single <code>docker compose up -d --build</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <h2>Quick start</h2>
+    <p class="section-sub">Full details, environment variables, and troubleshooting are in the <a href="https://github.com/danielesalpietro/vllm-granite/blob/develop/README.md">README</a>.</p>
+    <div class="code-block">
+<span class="cmt"># clone and configure</span><br>
+<span class="cmd">git clone https://github.com/danielesalpietro/vllm-granite.git</span><br>
+<span class="cmd">cd vllm-granite</span><br>
+<br>
+<span class="cmt"># build and start vLLM + AnythingLLM</span><br>
+<span class="cmd">docker compose up -d --build</span><br>
+<br>
+<span class="cmt"># optional: read-only Grafana dashboard on :3000</span><br>
+<span class="cmd">docker compose up -d prometheus nvidia-gpu-exporter cadvisor grafana</span>
+    </div>
+    <div class="stack-list">
+      <span>AnythingLLM UI → localhost:3001</span>
+      <span>vLLM API → localhost:8000</span>
+      <span>Grafana → localhost:3000</span>
+      <span>Prometheus → localhost:9090</span>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Built by <a href="https://github.com/danielesalpietro">danielesalpietro</a> ·
+    <a href="https://github.com/danielesalpietro/vllm-granite">Source on GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>
