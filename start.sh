@@ -34,7 +34,12 @@ for attempt in range(30):
 print("[start] Tutti i tentativi esauriti, vLLM tenta autonomamente.", flush=True)
 PYEOF
 
-exec vllm serve "$MODEL_ID" \
+# ── Quantizzazione on-the-fly (opzionale) ───────────────────────────────────
+# QUANTIZATION="bitsandbytes" carica i pesi bf16 originali quantizzandoli a
+# 4-bit al volo (~4x meno VRAM per i pesi) — utile su GPU con poca VRAM
+# (es. 16 GB) dove il modello non entrerebbe altrimenti. Lasciare vuoto
+# (default) su GPU con VRAM sufficiente: nessun cambiamento di comportamento.
+set -- vllm serve "$MODEL_ID" \
   --host "$HOST" \
   --port "$PORT" \
   --max-model-len "$MAX_MODEL_LEN" \
@@ -47,3 +52,9 @@ exec vllm serve "$MODEL_ID" \
   --enable-auto-tool-choice \
   --tool-call-parser granite \
   --served-model-name granite
+
+if [ -n "$QUANTIZATION" ]; then
+  set -- "$@" --quantization "$QUANTIZATION" --load-format bitsandbytes
+fi
+
+exec "$@"

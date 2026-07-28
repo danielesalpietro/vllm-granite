@@ -1,0 +1,6 @@
+# Forza LF su file di testo, indipendentemente da core.autocrlf locale.
+# Necessario perché start.sh viene copiato così com'è in un container Linux
+# (Dockerfile COPY): con CRLF la shebang diventa "#!/bin/sh\r" e l'exec
+# fallisce con "no such file or directory".
+* text=auto eol=lf
+*.sh text eol=lf

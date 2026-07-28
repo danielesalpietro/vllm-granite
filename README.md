@@ -1,6 +1,6 @@
 # vLLM + IBM Granite (MoE with CPU Offload)
 
-A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.com/vllm-project/vllm) serving an [IBM Granite](https://huggingface.co/ibm-granite) instruct model, paired with [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) as a chat/RAG/agent frontend. Runs entirely locally via Docker Compose, targeting a single-GPU workstation (24 GB VRAM) with a large amount of host RAM available for CPU offload (native Linux hosts only — see the [CPU offload](#cpu-offload) note below if you're on Docker Desktop/WSL2).
+A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.com/vllm-project/vllm) serving an [IBM Granite](https://huggingface.co/ibm-granite) instruct model, paired with [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) as a chat/RAG/agent frontend. Runs entirely locally via Docker Compose, targeting a single-GPU workstation. Primary target is 24 GB VRAM with a large amount of host RAM available for CPU offload (native Linux hosts only — see the [CPU offload](#cpu-offload) note below if you're on Docker Desktop/WSL2); 16 GB cards are also supported via on-the-fly quantization — see [Running on smaller GPUs](#running-on-smaller-gpus).
 
 ## Architecture
 
@@ -47,7 +47,7 @@ A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.co
 
 </details>
 
-- **`vllm`** — builds a custom image on top of `vllm/vllm-openai:v0.8.5`, downloads the configured Hugging Face model on first boot, and serves it via vLLM's OpenAI-compatible API. Tool/function calling is enabled using vLLM's `granite` parser, so it can act as the backend for AnythingLLM's Agent features (web scraping, RAG memory, etc.), not just plain chat.
+- **`vllm`** — builds a custom image on top of `vllm/vllm-openai:v0.26.0`, downloads the configured Hugging Face model on first boot, and serves it via vLLM's OpenAI-compatible API. Tool/function calling is enabled using vLLM's `granite` parser, so it can act as the backend for AnythingLLM's Agent features (web scraping, RAG memory, etc.), not just plain chat.
 - **`anythingllm`** — the web UI, connected to `vllm` as a `generic-openai` provider. Handles chat, workspaces, embeddings (local, CPU-only) and a LanceDB vector store — no external services required.
 - **`prometheus` / `nvidia-gpu-exporter` / `cadvisor` / `grafana`** — read-only monitoring stack; see [Monitoring](#monitoring) below.
 
@@ -60,7 +60,7 @@ A self-hosted, OpenAI-compatible LLM stack built around [vLLM](https://github.co
 
 ## Quick start
 
-1. Copy `.env` and adjust the values for your hardware (see [Configuration](#configuration) below).
+1. Copy `.env.docker.example` to `.env` and adjust the values for your hardware (see [Configuration](#configuration) below).
 2. Build and start both services:
 
    ```bash
@@ -90,11 +90,11 @@ Environment variables consumed by the `vllm` service (set in `.env`, loaded via 
 | `DTYPE`                   | `bfloat16`                           | Model weights/activations dtype                            |
 | `HF_TOKEN`                | *(empty)*                            | Hugging Face access token, required for gated models       |
 | `CPU_OFFLOAD_GB`          | `0`                                   | GB of model weights to offload to host RAM (passed as `--cpu-offload-gb`). **Only works on native Linux Docker hosts — see [CPU offload](#cpu-offload) below.** Leave at `0` on Docker Desktop/WSL2. |
+| `QUANTIZATION`            | *(empty)*                            | Empty = full bf16 weights (default, matches the 24 GB profile below). Set to `bitsandbytes` to quantize weights to 4-bit on load — see [Running on smaller GPUs](#running-on-smaller-gpus). |
+| `AUTH_TOKEN`              | `changeme`                            | AnythingLLM UI login password — **change before any real use**             |
+| `JWT_SECRET`               | *(placeholder, see below)*           | Required for AnythingLLM to issue session tokens; generate a real value with `openssl rand -hex 32` before any use beyond localhost |
 
-AnythingLLM's settings (provider, storage, auth) are currently hardcoded in `docker-compose.yml` under `services.anythingllm.environment` rather than sourced from `.env`. Notably:
-
-- `AUTH_TOKEN` — the UI login password (default `changeme`, **change before any real use**)
-- `JWT_SECRET` — required for AnythingLLM to issue session tokens; must be a long random string
+AnythingLLM's provider/storage settings are hardcoded in `docker-compose.yml` under `services.anythingllm.environment` (they rarely change), but `AUTH_TOKEN` and `JWT_SECRET` are read from `.env` via Compose variable substitution (same mechanism already used for `PORT`), with the same insecure defaults falling back if unset — set both in `.env` before exposing this stack beyond `localhost`.
 
 ### Workspace settings (language consistency)
 
@@ -103,7 +103,7 @@ At this model size (8B), Granite is inconsistent about replying in the user's la
 Two workspace-level settings (stored in AnythingLLM's own SQLite DB — `anythingllm_storage` volume, *not* a repo file, so they don't survive a fresh volume and aren't captured by `git`) mitigate this:
 
 - **System prompt** (Workspace Settings → Chat Settings → Prompt) — prepend an explicit instruction, e.g. *"Always respond in the same language the user writes in, matching it exactly, unless the user explicitly asks you to switch or translate. Never claim you are only able to respond in English."*
-- **Temperature** (Workspace Settings → Chat Settings → LLM Temperature) — lower than the provider default (~0.7+) improves instruction-following consistency at the cost of response variety. `0.4` gave consistent correct-language replies across repeated tests in this setup; `0.1` was even more consistent if strict adherence matters more than variety.
+- **Temperature** (Workspace Settings → Chat Settings → LLM Temperature) — lower than the provider default (~0.7+) improves instruction-following consistency at the cost of response variety. `0.1` gave the most consistent correct-language replies in testing, but was raised to `0.4` in this setup — the current recommended value — since `0.1` was too restrictive on response variety/quality; `0.4` still held consistent correct-language behavior across repeated tests.
 
 ## CPU offload
 
@@ -116,6 +116,14 @@ AssertionError: V1 CPU offloading requires uva (pin memory) support
 ```
 
 This is the same underlying limitation behind the `Using 'pin_memory=False' as WSL is detected` warning that always appears in the logs. Keep `CPU_OFFLOAD_GB=0` (the default) if you're running under WSL2 — this repo's 8B Granite default fits entirely in a 24 GB GPU anyway. If you move this stack to a bare-metal/native Linux Docker host, you can raise `CPU_OFFLOAD_GB` to run the larger MoE models listed in `.env`'s comments (e.g. `granite-3.3-20b-instruct`, `Mixtral-8x7B`, `Qwen2-57B-A14B`).
+
+**vLLM v0.25+ on WSL2 needs one more fix, unrelated to `CPU_OFFLOAD_GB`.** Starting with vLLM v0.25, the GPU worker unconditionally allocates a pinned ("UVA") buffer for token-ID staging as part of its "Model Runner V2" — not just for CPU offload — so even with `CPU_OFFLOAD_GB=0` the container fails at engine startup on WSL2 with:
+
+```
+RuntimeError: UVA is not available
+```
+
+Set `VLLM_USE_V2_MODEL_RUNNER=0` in `.env` (commented out by default in `.env.docker.example`) to fall back to the original model runner, which doesn't require UVA. Leave it commented out on a native Linux host (e.g. the 3090 profile) — Model Runner V2 works fine there and is more efficient.
 
 ## KV cache capacity
 
@@ -132,6 +140,14 @@ This **29,696-token KV cache budget is essentially fixed** by leftover VRAM afte
 - Whatever headroom is left above `MAX_MODEL_LEN` determines concurrency — e.g. at `MAX_MODEL_LEN=16384` there's room for ~1.81 concurrent full-length requests; push `MAX_MODEL_LEN` close to 29,696 and you're limited to a single request at a time, with no room for AnythingLLM (or anyone else) to run a second chat concurrently.
 
 If AnythingLLM's Agent still hits a `This model's maximum context length is N tokens` 400 error above this new limit, raise `MAX_MODEL_LEN` in `.env` and `GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT` in `docker-compose.yml` together (they must match), then re-check the actual logged `GPU KV cache size` after restart — don't just assume the new value fits.
+
+## Running on smaller GPUs
+
+The 24 GB profile above (bf16 weights, `QUANTIZATION` empty) is the one documented and tested throughout this README (KV cache numbers, concurrency, etc.). On a 16 GB card, `ibm-granite/granite-3.3-8b-instruct` in bf16 does **not** fit: the weights alone are ~15.25 GiB, more than the ~14.4 GB budget `GPU_MEMORY_UTILIZATION=0.90` gives you on a 16 GB card, leaving nothing for the KV cache. CPU offload isn't a workaround here if you're on Docker Desktop/WSL2 — see [CPU offload](#cpu-offload).
+
+Set `QUANTIZATION=bitsandbytes` in `.env` to quantize the same `MODEL_ID` to 4-bit on load (`--quantization bitsandbytes --load-format bitsandbytes`, added automatically by `start.sh` when the variable is set). This drops the weight footprint to roughly 4–5 GB, leaving healthy headroom for KV cache and concurrency at `MAX_MODEL_LEN=16384` on a 16 GB card. Leave `QUANTIZATION` empty on 24 GB+ cards — the default bf16 path is unaffected either way.
+
+**NVIDIA Blackwell (RTX 50-series) note**: if you're on an RTX 50-series GPU (e.g. RTX 5080/5090, `sm_120`), you need a vLLM image recent enough to include Blackwell kernel support — this repo pins `vllm/vllm-openai:v0.26.0` in the [Dockerfile](Dockerfile) for that reason. An older pinned tag will fail at model-load time with `CUDA capability sm_120 is not compatible with the current PyTorch installation`, which is unrelated to VRAM sizing and happens even before the model finishes loading.
 
 ## Persistence
 
@@ -187,6 +203,7 @@ Start just the monitoring stack on its own with `docker compose up -d prometheus
 - **Dockerfile parse errors on custom `RUN` blocks** — avoid multi-line inline heredocs directly in `RUN` instructions; ship scripts as files and `COPY` them in instead (see `start.sh`).
 - **`SafetensorError: InvalidHeaderDeserialization`** — a corrupted/partial model shard, usually from an interrupted download. Stop the container and clear the cached model directory from the correct volume (check the real volume name with `docker inspect vllm-granite --format '{{range .Mounts}}{{.Name}} -> {{.Destination}}{{"\n"}}{{end}}'` — it's derived from the Compose *project* name, not the container name), then restart to trigger a clean re-download.
 - **AnythingLLM Agent replies with `400 status code (no body)`** — vLLM wasn't started with tool-calling support; make sure `--enable-auto-tool-choice --tool-call-parser granite` are present in `start.sh`.
-- **AnythingLLM login fails with `Cannot create JWT as JWT_SECRET is unset`** — set `JWT_SECRET` in `docker-compose.yml` under the `anythingllm` service.
+- **AnythingLLM login fails with `Cannot create JWT as JWT_SECRET is unset`** — set `JWT_SECRET` in `.env` (falls back to a non-functional placeholder if unset).
+- **`Conflict. The container name "/anythingllm" is already in use`** — another, unrelated Docker Compose project on this machine also uses `container_name: anythingllm`; check with `docker ps -a --filter name=anythingllm` before removing anything. This repo's service is named `vllm-granite-anythingllm` precisely to avoid colliding with other stacks.
 - **`AssertionError: V1 CPU offloading requires uva (pin memory) support`** — you're on Docker Desktop/WSL2 with `CPU_OFFLOAD_GB` set above `0`; see [CPU offload](#cpu-offload).
 - **`This model's maximum context length is N tokens. However, you requested M tokens`** — AnythingLLM's Agent mode (tool definitions + RAG context + chat history) built a prompt longer than `MAX_MODEL_LEN`. Raise `MAX_MODEL_LEN` in `.env` and `GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT` in `docker-compose.yml` together, staying within the [KV cache capacity](#kv-cache-capacity) for your GPU.

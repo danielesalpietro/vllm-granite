@@ -1,18 +1,19 @@
 # ── vLLM + IBM Granite / MoE ──────────────────────────────────────────────────
-FROM vllm/vllm-openai:v0.8.5
+FROM vllm/vllm-openai:v0.26.0
 
 LABEL maintainer="daniele.salpietro@gmail.com" \
-      description="vLLM server – Granite / MoE – 24 GB VRAM + 192 GB RAM"
+      description="vLLM server – Granite / MoE – 16-24 GB VRAM"
 
 # ── Variabili d'ambiente ───────────────────────────────────────────────────────
 ENV MODEL_ID="ibm-granite/granite-3.3-8b-instruct" \
-    MAX_MODEL_LEN=8192 \
+    MAX_MODEL_LEN=16384 \
     TENSOR_PARALLEL_SIZE=1 \
     GPU_MEMORY_UTILIZATION=0.90 \
     DTYPE="bfloat16" \
     PORT=8000 \
     HOST="0.0.0.0" \
-    HF_TOKEN=""
+    HF_TOKEN="" \
+    QUANTIZATION=""
 
 ENV HF_HOME=/root/.cache/huggingface
 

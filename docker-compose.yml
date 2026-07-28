@@ -62,7 +62,7 @@ services:
   # ── AnythingLLM ────────────────────────────────────────────────────────────
   anythingllm:
     image: mintplexlabs/anythingllm:latest
-    container_name: anythingllm
+    container_name: vllm-granite-anythingllm
     restart: unless-stopped
     depends_on:
       vllm:
@@ -92,11 +92,11 @@ services:
       # ── Vector DB (LanceDB embedded, nessun servizio esterno) ───────────────
       VECTOR_DB: "lancedb"
 
-      # ── Credenziali UI (cambia in produzione) ───────────────────────────────
-      AUTH_TOKEN: "changeme"
+      # ── Credenziali UI (impostare AUTH_TOKEN in .env, cambia in produzione) ──
+      AUTH_TOKEN: "${AUTH_TOKEN:-changeme}"
 
-      # ── JWT (obbligatorio per creare sessioni/login) ────────────────────────
-      JWT_SECRET: "d6d6f1cdf073560d386656e4ee87c14bad8bb8132d76508faa55111d41c003d2"
+      # ── JWT (obbligatorio per creare sessioni/login, impostare in .env) ─────
+      JWT_SECRET: "${JWT_SECRET:-changeme-generate-a-real-secret-with-openssl-rand--hex-32}"
 
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3001/api/ping"]
