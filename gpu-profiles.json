@@ -1,0 +1,75 @@
+{
+  "_readme": "Preset di riferimento, applicati con ./apply-gpu-profile.sh <gpu-profile> <host-profile>. 'gpu_profiles' guida GPU_MEMORY_UTILIZATION/MAX_MODEL_LEN/QUANTIZATION (dipendono da VRAM); 'host_profiles' guida VLLM_USE_V2_MODEL_RUNNER/CPU_OFFLOAD_GB (dipendono dall'ambiente Docker: Linux nativo vs WSL2, vedi README sezioni 'CPU offload' e 'Running on smaller GPUs'). 'verified: false' = valore stimato per estrapolazione, non testato su hardware reale — trattalo come punto di partenza, non come garanzia.",
+  "gpu_profiles": {
+    "rtx-3090-24gb": {
+      "vram_gb": 24,
+      "quantization": "",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 16384,
+      "verified": true,
+      "notes": "Profilo primario del README. bf16 pieno, KV cache ~29.7k token con granite-3.3-8b-instruct."
+    },
+    "rtx-4090-24gb": {
+      "vram_gb": 24,
+      "quantization": "",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 16384,
+      "verified": false,
+      "notes": "Stessa VRAM della 3090: stessi valori per estrapolazione, non testati su questa scheda."
+    },
+    "rtx-5090-32gb": {
+      "vram_gb": 32,
+      "quantization": "",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 24576,
+      "verified": false,
+      "notes": "VRAM extra rispetto al profilo 24GB: MAX_MODEL_LEN alzato indicativamente, non verificato. Richiede vllm-openai >= v0.26.0 per il supporto Blackwell (sm_120), vedi README."
+    },
+    "rtx-5080-16gb": {
+      "vram_gb": 16,
+      "quantization": "bitsandbytes",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 16384,
+      "verified": true,
+      "notes": "Testato: pesi bitsandbytes 4-bit ~4.65 GiB, KV cache 55k token con granite-3.3-8b-instruct. Richiede vllm-openai >= v0.26.0 per il supporto Blackwell (sm_120)."
+    },
+    "rtx-4080-16gb": {
+      "vram_gb": 16,
+      "quantization": "bitsandbytes",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 16384,
+      "verified": false,
+      "notes": "Stessa VRAM della 5080: stessi valori per estrapolazione, non testati su questa scheda. Architettura Ada Lovelace, nessun problema di supporto sm_120 (quello e' solo per Blackwell/RTX 50)."
+    },
+    "generic-12gb": {
+      "vram_gb": 12,
+      "quantization": "bitsandbytes",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 8192,
+      "verified": false,
+      "notes": "VRAM inferiore a 16GB: MAX_MODEL_LEN ridotto per lasciare margine alla KV cache. Stimato, non verificato."
+    },
+    "generic-8gb": {
+      "vram_gb": 8,
+      "quantization": "bitsandbytes",
+      "gpu_memory_utilization": 0.92,
+      "max_model_len": 4096,
+      "verified": false,
+      "notes": "Margine molto ridotto anche in 4-bit. Valuta un modello Granite piu' piccolo (es. granite-3.3-2b-instruct) invece di forzare l'8B su questa VRAM."
+    }
+  },
+  "host_profiles": {
+    "native-linux": {
+      "cpu_offload_gb": 0,
+      "vllm_use_v2_model_runner": "",
+      "verified": true,
+      "notes": "UVA disponibile: Model Runner V2 funziona, VLLM_USE_V2_MODEL_RUNNER resta vuoto. CPU_OFFLOAD_GB puo' essere alzato per modelli MoE piu' grandi della VRAM (vedi README sezione 'CPU offload') — non alzato automaticamente qui, la quantita' dipende dalla RAM libera della macchina."
+    },
+    "wsl2": {
+      "cpu_offload_gb": 0,
+      "vllm_use_v2_model_runner": "0",
+      "verified": true,
+      "notes": "UVA non disponibile su Docker Desktop/WSL2: VLLM_USE_V2_MODEL_RUNNER=0 e' obbligatorio anche con CPU_OFFLOAD_GB=0, altrimenti il container crasha con 'RuntimeError: UVA is not available'. CPU offload resta non utilizzabile qui a prescindere, vedi README sezione 'CPU offload'."
+    }
+  }
+}

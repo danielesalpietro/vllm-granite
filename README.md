@@ -143,7 +143,16 @@ If AnythingLLM's Agent still hits a `This model's maximum context length is N to
 
 ## Running on smaller GPUs
 
-The 24 GB profile above (bf16 weights, `QUANTIZATION` empty) is the one documented and tested throughout this README (KV cache numbers, concurrency, etc.). On a 16 GB card, `ibm-granite/granite-3.3-8b-instruct` in bf16 does **not** fit: the weights alone are ~15.25 GiB, more than the ~14.4 GB budget `GPU_MEMORY_UTILIZATION=0.90` gives you on a 16 GB card, leaving nothing for the KV cache. CPU offload isn't a workaround here if you're on Docker Desktop/WSL2 — see [CPU offload](#cpu-offload).
+[gpu-profiles.json](gpu-profiles.json) collects known-good (or best-estimate) `GPU_MEMORY_UTILIZATION` / `MAX_MODEL_LEN` / `QUANTIZATION` values per GPU/VRAM tier, plus `VLLM_USE_V2_MODEL_RUNNER` / `CPU_OFFLOAD_GB` per host environment (native Linux vs. WSL2) — the two vary independently, since one depends on the card and the other on the Docker host. Apply a combination to `.env` with:
+
+```bash
+./apply-gpu-profile.sh --list                 # see available GPU/host profile keys
+./apply-gpu-profile.sh rtx-5080-16gb wsl2     # writes the matching values into .env
+```
+
+It only touches those five keys — `MODEL_ID`, `HF_TOKEN`, `AUTH_TOKEN`, `JWT_SECRET`, etc. are left alone. Entries marked `verified: false` in the JSON are extrapolated from a same-VRAM or same-family card, not tested directly — treat them as a starting point. Add new GPUs by editing the JSON, not the script.
+
+The 24 GB profile (bf16 weights, `QUANTIZATION` empty) is the one documented and tested throughout the rest of this README (KV cache numbers, concurrency, etc.). On a 16 GB card, `ibm-granite/granite-3.3-8b-instruct` in bf16 does **not** fit: the weights alone are ~15.25 GiB, more than the ~14.4 GB budget `GPU_MEMORY_UTILIZATION=0.90` gives you on a 16 GB card, leaving nothing for the KV cache. CPU offload isn't a workaround here if you're on Docker Desktop/WSL2 — see [CPU offload](#cpu-offload).
 
 Set `QUANTIZATION=bitsandbytes` in `.env` to quantize the same `MODEL_ID` to 4-bit on load (`--quantization bitsandbytes --load-format bitsandbytes`, added automatically by `start.sh` when the variable is set). This drops the weight footprint to roughly 4–5 GB, leaving healthy headroom for KV cache and concurrency at `MAX_MODEL_LEN=16384` on a 16 GB card. Leave `QUANTIZATION` empty on 24 GB+ cards — the default bf16 path is unaffected either way.
 
